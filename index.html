@@ -1,0 +1,682 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>City Atlas — Visited & Wishlist</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,400&family=Archivo:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0d1016;
+    --surface:#141823;
+    --surface-2:#1c212e;
+    --surface-3:#252b3a;
+    --ink:#f3eee3;
+    --muted:#9aa3b5;
+    --faint:#646d80;
+    --gold:#e0b15e;
+    --gold-soft:rgba(224,177,94,.14);
+    --line:rgba(255,255,255,.07);
+    --line-2:rgba(255,255,255,.12);
+    --cheap:#4ade80;
+    --mid:#fbbf24;
+    --splurge:#f87171;
+    --visited:#ede6d6;
+    --shadow:0 18px 50px rgba(0,0,0,.55);
+    --r:14px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{
+    font-family:'Archivo',system-ui,sans-serif;
+    background:var(--bg);
+    color:var(--ink);
+    overflow:hidden;
+    -webkit-font-smoothing:antialiased;
+  }
+  #app{display:flex;height:100vh;height:100dvh;position:relative}
+
+  /* ---------- Map ---------- */
+  #map{flex:1;height:100%;background:#0d1016;z-index:1}
+  .leaflet-container{background:#0d1016;font-family:'Archivo',sans-serif}
+  .leaflet-control-attribution{background:rgba(13,16,22,.7);color:var(--faint);font-size:10px}
+  .leaflet-control-attribution a{color:var(--muted)}
+  .leaflet-bar a{background:var(--surface-2);color:var(--ink);border-bottom-color:var(--line)}
+  .leaflet-bar a:hover{background:var(--surface-3)}
+
+  /* ---------- Pins ---------- */
+  .pin{
+    width:26px;height:26px;border-radius:50% 50% 50% 0;
+    transform:rotate(-45deg);
+    border:2px solid rgba(0,0,0,.35);
+    box-shadow:0 5px 12px rgba(0,0,0,.5);
+    display:flex;align-items:center;justify-content:center;
+    transition:transform .15s ease;
+  }
+  .pin:hover{transform:rotate(-45deg) scale(1.12)}
+  .pin span{transform:rotate(45deg);font-size:11px;font-weight:700;color:rgba(0,0,0,.65)}
+  .pin.visited{background:var(--visited)}
+  .pin.cheap{background:var(--cheap)}
+  .pin.mid{background:var(--mid)}
+  .pin.splurge{background:var(--splurge)}
+
+  .leaflet-popup-content-wrapper{
+    background:var(--surface-2);color:var(--ink);border-radius:12px;
+    box-shadow:var(--shadow);border:1px solid var(--line-2)
+  }
+  .leaflet-popup-tip{background:var(--surface-2)}
+  .leaflet-popup-content{margin:14px 16px;font-family:'Archivo',sans-serif}
+  .pop-name{font-family:'Fraunces',serif;font-size:16px;font-weight:600;margin-bottom:2px;line-height:1.2}
+  .pop-sub{font-size:12px;color:var(--muted);margin-bottom:10px}
+  .pop-row{display:flex;gap:6px;flex-wrap:wrap}
+  .pop-row button{
+    border:1px solid var(--line-2);background:var(--surface-3);color:var(--ink);
+    font-family:'Archivo';font-size:11px;font-weight:600;padding:5px 9px;border-radius:8px;cursor:pointer
+  }
+  .pop-row button:hover{border-color:var(--gold)}
+  .pop-row button.danger:hover{border-color:var(--splurge);color:var(--splurge)}
+  .pop-row button.on{background:var(--gold);color:#1a1303;border-color:var(--gold)}
+
+  /* ---------- Panel ---------- */
+  #panel{
+    width:380px;flex-shrink:0;height:100%;background:var(--surface);
+    border-right:1px solid var(--line);display:flex;flex-direction:column;
+    z-index:1000;box-shadow:var(--shadow)
+  }
+  .pad{padding:18px 20px}
+  header.brand{padding:20px 20px 16px;border-bottom:1px solid var(--line)}
+  .kicker{font-size:10.5px;letter-spacing:.28em;text-transform:uppercase;color:var(--gold);font-weight:600;margin-bottom:7px}
+  h1{font-family:'Fraunces',serif;font-weight:600;font-size:27px;line-height:1.02;letter-spacing:-.01em}
+  h1 em{font-style:italic;color:var(--gold);font-weight:500}
+  .brand p{font-size:12.5px;color:var(--muted);margin-top:6px;line-height:1.4}
+
+  .scroll{flex:1;overflow-y:auto;overscroll-behavior:contain}
+  .scroll::-webkit-scrollbar{width:9px}
+  .scroll::-webkit-scrollbar-thumb{background:var(--surface-3);border-radius:9px;border:2px solid var(--surface)}
+
+  /* search */
+  .search-wrap{position:relative}
+  .search-row{display:flex;gap:8px}
+  input[type=text]{
+    flex:1;background:var(--surface-2);border:1px solid var(--line-2);color:var(--ink);
+    padding:11px 13px;border-radius:10px;font-family:'Archivo';font-size:14px;outline:none
+  }
+  input[type=text]:focus{border-color:var(--gold)}
+  input::placeholder{color:var(--faint)}
+  .btn-gold{
+    background:var(--gold);color:#1a1303;border:none;font-family:'Archivo';font-weight:700;font-size:13px;
+    padding:0 16px;border-radius:10px;cursor:pointer;white-space:nowrap;transition:filter .15s
+  }
+  .btn-gold:hover{filter:brightness(1.08)}
+  .btn-gold:disabled{opacity:.5;cursor:default}
+  .results{margin-top:8px;display:flex;flex-direction:column;gap:6px}
+  .res{
+    background:var(--surface-2);border:1px solid var(--line);border-radius:10px;padding:9px 11px;
+    display:flex;align-items:center;gap:10px
+  }
+  .res .info{flex:1;min-width:0}
+  .res .rn{font-size:13.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .res .rc{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .res .acts{display:flex;gap:5px}
+  .chip{
+    border:1px solid var(--line-2);background:transparent;color:var(--muted);
+    font-family:'Archivo';font-size:11px;font-weight:600;padding:5px 8px;border-radius:7px;cursor:pointer;white-space:nowrap
+  }
+  .chip:hover{color:var(--ink);border-color:var(--gold)}
+  .chip.v:hover{border-color:var(--visited);color:var(--visited)}
+  .hint{font-size:11.5px;color:var(--faint);margin-top:7px}
+  .loading{font-size:12px;color:var(--gold);margin-top:8px}
+
+  /* stats */
+  .stats{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:4px}
+  .stat{background:var(--surface-2);border:1px solid var(--line);border-radius:12px;padding:13px 14px}
+  .stat .lab{font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--faint);font-weight:600}
+  .stat .val{font-family:'Fraunces',serif;font-size:26px;font-weight:600;margin-top:3px;line-height:1}
+  .stat .val small{font-size:13px;color:var(--muted);font-family:'Archivo';font-weight:500}
+  .stat.accent{background:var(--gold-soft);border-color:rgba(224,177,94,.3)}
+  .stat.accent .val{color:var(--gold)}
+
+  .bar{height:9px;border-radius:6px;overflow:hidden;display:flex;margin-top:12px;background:var(--surface-2)}
+  .bar i{display:block;height:100%}
+  .legend{display:flex;gap:14px;margin-top:9px;flex-wrap:wrap}
+  .legend span{font-size:11px;color:var(--muted);display:flex;align-items:center;gap:5px}
+  .dot{width:9px;height:9px;border-radius:50%;display:inline-block}
+
+  /* section titles */
+  .sec-title{display:flex;align-items:center;justify-content:space-between;margin:22px 0 10px}
+  .sec-title h2{font-family:'Fraunces',serif;font-size:15px;font-weight:600;letter-spacing:.01em}
+  .sec-title .count{font-size:11px;color:var(--faint);font-weight:600;background:var(--surface-2);padding:3px 9px;border-radius:20px}
+
+  /* tier settings */
+  details.tiers{background:var(--surface-2);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+  details.tiers summary{padding:12px 14px;cursor:pointer;font-size:12.5px;font-weight:600;color:var(--muted);list-style:none;display:flex;align-items:center;justify-content:space-between}
+  details.tiers summary::-webkit-details-marker{display:none}
+  details.tiers summary:hover{color:var(--ink)}
+  details.tiers[open] summary{border-bottom:1px solid var(--line)}
+  .tier-grid{padding:12px 14px;display:flex;flex-direction:column;gap:9px}
+  .tier-row{display:flex;align-items:center;gap:10px}
+  .tier-row .tdot{width:11px;height:11px;border-radius:50%;flex-shrink:0}
+  .tier-row label{flex:1;font-size:13px;font-weight:600}
+  .tier-row .cur{color:var(--faint);font-size:13px}
+  .tier-row input{width:86px;background:var(--surface-3);border:1px solid var(--line-2);color:var(--ink);padding:7px 9px;border-radius:8px;font-family:'Archivo';font-size:13px;text-align:right;outline:none}
+  .tier-row input:focus{border-color:var(--gold)}
+
+  /* place list */
+  .places{display:flex;flex-direction:column;gap:7px}
+  .place{
+    background:var(--surface-2);border:1px solid var(--line);border-radius:11px;
+    padding:10px 12px;display:flex;align-items:center;gap:11px
+  }
+  .place .mk{width:11px;height:11px;border-radius:50%;flex-shrink:0;box-shadow:0 0 0 3px rgba(255,255,255,.04)}
+  .place .pinfo{flex:1;min-width:0}
+  .place .pn{font-size:13.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .place .pc{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .place .tsel{display:flex;gap:3px;margin-top:6px}
+  .place .tsel button{
+    flex:1;border:1px solid var(--line-2);background:transparent;color:var(--faint);
+    font-family:'Archivo';font-size:10px;font-weight:700;padding:4px 0;border-radius:6px;cursor:pointer;text-transform:uppercase;letter-spacing:.04em
+  }
+  .place .tsel button.on.cheap{background:var(--cheap);color:#06280f;border-color:var(--cheap)}
+  .place .tsel button.on.mid{background:var(--mid);color:#3a2c02;border-color:var(--mid)}
+  .place .tsel button.on.splurge{background:var(--splurge);color:#3a0a0a;border-color:var(--splurge)}
+  .place .side{display:flex;flex-direction:column;align-items:flex-end;gap:6px}
+  .place .cost{font-family:'Fraunces',serif;font-size:14px;font-weight:600;color:var(--gold)}
+  .iconbtn{background:none;border:none;color:var(--faint);cursor:pointer;font-size:15px;line-height:1;padding:2px}
+  .iconbtn:hover{color:var(--ink)}
+  .iconbtn.go:hover{color:var(--gold)}
+  .iconbtn.del:hover{color:var(--splurge)}
+  .empty{text-align:center;color:var(--faint);font-size:12.5px;padding:18px 10px;line-height:1.5}
+
+  /* footer */
+  footer.tools{border-top:1px solid var(--line);padding:13px 20px;display:flex;gap:8px;flex-wrap:wrap}
+  .tbtn{flex:1;min-width:90px;background:var(--surface-2);border:1px solid var(--line-2);color:var(--muted);font-family:'Archivo';font-size:11.5px;font-weight:600;padding:8px;border-radius:9px;cursor:pointer;text-align:center}
+  .tbtn:hover{color:var(--ink);border-color:var(--gold)}
+  .tbtn.danger:hover{color:var(--splurge);border-color:var(--splurge)}
+
+  /* mobile toggle */
+  #toggle{
+    display:none;position:absolute;top:14px;left:14px;z-index:1100;
+    background:var(--surface);border:1px solid var(--line-2);color:var(--ink);
+    width:46px;height:46px;border-radius:12px;cursor:pointer;box-shadow:var(--shadow);
+    align-items:center;justify-content:center;font-size:18px
+  }
+  #scrim{display:none}
+
+  @media(max-width:780px){
+    #panel{position:absolute;top:0;left:0;height:100%;transform:translateX(-100%);transition:transform .28s cubic-bezier(.4,0,.2,1);width:min(88vw,380px)}
+    #panel.open{transform:translateX(0)}
+    #toggle{display:flex}
+    #scrim.show{display:block;position:absolute;inset:0;background:rgba(0,0,0,.5);z-index:999}
+  }
+
+  .toast{
+    position:absolute;bottom:24px;left:50%;transform:translateX(-50%) translateY(20px);
+    background:var(--surface-3);border:1px solid var(--line-2);color:var(--ink);
+    padding:11px 18px;border-radius:11px;font-size:13px;font-weight:500;z-index:2000;
+    box-shadow:var(--shadow);opacity:0;transition:all .3s;pointer-events:none;white-space:nowrap
+  }
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+</style>
+</head>
+<body>
+<div id="app">
+  <button id="toggle" aria-label="Toggle panel">☰</button>
+  <div id="scrim"></div>
+
+  <aside id="panel">
+    <header class="brand">
+      <div class="kicker">Personal Atlas</div>
+      <h1>Cities <em>visited</em><br>& still to go</h1>
+      <p>Drop a pin on what you've seen. Tier the rest and see the budget to clear your list.</p>
+    </header>
+
+    <div class="scroll">
+      <div class="pad">
+        <!-- SEARCH -->
+        <div class="search-wrap">
+          <div class="search-row">
+            <input id="q" type="text" placeholder="Search a city, e.g. Lisbon" autocomplete="off">
+            <button id="go" class="btn-gold">Find</button>
+          </div>
+          <div id="loading" class="loading" style="display:none">Searching…</div>
+          <div id="results" class="results"></div>
+          <div class="hint">Tip: you can also click anywhere on the map to add a spot.</div>
+        </div>
+
+        <!-- STATS -->
+        <div class="stats">
+          <div class="stat"><div class="lab">Visited</div><div class="val" id="s-visited">0</div></div>
+          <div class="stat"><div class="lab">Still to go</div><div class="val" id="s-remaining">0</div></div>
+          <div class="stat accent"><div class="lab">Avg cost / city</div><div class="val" id="s-avg">€0</div></div>
+          <div class="stat"><div class="lab">Total to clear</div><div class="val" id="s-total">€0</div></div>
+        </div>
+        <div class="bar" id="bar"></div>
+        <div class="legend">
+          <span><i class="dot" style="background:var(--cheap)"></i>Cheap</span>
+          <span><i class="dot" style="background:var(--mid)"></i>Mid</span>
+          <span><i class="dot" style="background:var(--splurge)"></i>Splurge</span>
+          <span><i class="dot" style="background:var(--visited)"></i>Visited</span>
+        </div>
+
+        <!-- TIER SETTINGS -->
+        <div class="sec-title"><h2>Cost tiers</h2></div>
+        <details class="tiers">
+          <summary><span>Set what each tier costs (flights + stay)</span><span>⚙</span></summary>
+          <div class="tier-grid">
+            <div class="tier-row"><i class="tdot" style="background:var(--cheap)"></i><label>Cheap</label><span class="cur">€</span><input type="number" id="t-cheap" min="0" step="50"></div>
+            <div class="tier-row"><i class="tdot" style="background:var(--mid)"></i><label>Mid</label><span class="cur">€</span><input type="number" id="t-mid" min="0" step="50"></div>
+            <div class="tier-row"><i class="tdot" style="background:var(--splurge)"></i><label>Splurge</label><span class="cur">€</span><input type="number" id="t-splurge" min="0" step="50"></div>
+          </div>
+        </details>
+
+        <!-- WISHLIST -->
+        <div class="sec-title"><h2>Still to go</h2><span class="count" id="c-wish">0</span></div>
+        <div class="places" id="list-wish"></div>
+
+        <!-- VISITED -->
+        <div class="sec-title"><h2>Visited</h2><span class="count" id="c-visit">0</span></div>
+        <div class="places" id="list-visit"></div>
+      </div>
+    </div>
+
+    <footer class="tools">
+      <button class="tbtn" id="export">↓ Export</button>
+      <button class="tbtn" id="import">↑ Import</button>
+      <button class="tbtn danger" id="reset">Reset</button>
+      <input type="file" id="file" accept="application/json" style="display:none">
+    </footer>
+  </aside>
+
+  <div id="map"></div>
+</div>
+<div id="toast" class="toast"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+(function(){
+  "use strict";
+
+  const KEY = "city-atlas:data:v1";
+  const TIER_LABELS = {cheap:"Cheap", mid:"Mid", splurge:"Splurge"};
+  const DEFAULT_TIERS = {cheap:400, mid:900, splurge:2000};
+
+  let state = { places: [], tiers: {...DEFAULT_TIERS} };
+  const markers = {};   // id -> leaflet marker
+
+  /* ---------- persistence ---------- */
+  async function load(){
+    try{
+      const r = await window.storage.get(KEY);
+      if(r && r.value){
+        const d = JSON.parse(r.value);
+        state.places = Array.isArray(d.places)? d.places : [];
+        state.tiers = Object.assign({...DEFAULT_TIERS}, d.tiers||{});
+      }
+    }catch(e){ /* no saved data yet */ }
+  }
+  let saveTimer=null;
+  function save(){
+    clearTimeout(saveTimer);
+    saveTimer=setTimeout(async ()=>{
+      try{ await window.storage.set(KEY, JSON.stringify(state)); }
+      catch(e){ console.warn("save failed", e); }
+    },150);
+  }
+
+  /* ---------- map ---------- */
+  const map = L.map('map',{zoomControl:true, worldCopyJump:true}).setView([30,10], 2.4);
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{
+    attribution:'&copy; OpenStreetMap &copy; CARTO',
+    subdomains:'abcd', maxZoom:19
+  }).addTo(map);
+  map.attributionControl.setPrefix('');
+
+  function makeIcon(p){
+    const cls = p.status==='visited' ? 'visited' : p.tier;
+    const glyph = p.status==='visited' ? '✓' : '';
+    return L.divIcon({
+      className:'',
+      html:`<div class="pin ${cls}"><span>${glyph}</span></div>`,
+      iconSize:[26,26], iconAnchor:[13,26], popupAnchor:[0,-24]
+    });
+  }
+
+  function popupHTML(p){
+    const tierBtns = ['cheap','mid','splurge'].map(t=>
+      `<button data-act="tier" data-t="${t}" class="${p.status==='wishlist'&&p.tier===t?'on':''}">${TIER_LABELS[t]}</button>`).join('');
+    return `<div class="pop-name">${esc(p.name)}</div>
+      <div class="pop-sub">${esc(p.country||'')}</div>
+      <div class="pop-row" style="margin-bottom:6px">
+        <button data-act="status" data-s="visited" class="${p.status==='visited'?'on':''}">✓ Visited</button>
+        <button data-act="status" data-s="wishlist" class="${p.status==='wishlist'?'on':''}">★ Wishlist</button>
+      </div>
+      ${p.status==='wishlist' ? `<div class="pop-row" style="margin-bottom:6px">${tierBtns}</div>`:''}
+      <div class="pop-row"><button data-act="del" class="danger">Remove</button></div>`;
+  }
+
+  function bindPopup(p, marker){
+    marker.bindPopup(()=>popupHTML(p));
+    marker.on('popupopen', (e)=>{
+      const el = e.popup.getElement();
+      el.querySelectorAll('[data-act]').forEach(b=>{
+        b.addEventListener('click', ()=>{
+          const act=b.dataset.act;
+          if(act==='status'){ p.status=b.dataset.s; if(p.status==='wishlist'&&!p.tier) p.tier='mid'; }
+          else if(act==='tier'){ p.tier=b.dataset.t; }
+          else if(act==='del'){ removePlace(p.id); map.closePopup(); render(); save(); return; }
+          refreshMarker(p);
+          marker.setPopupContent(popupHTML(p));
+          render(); save();
+        });
+      });
+    });
+  }
+
+  function refreshMarker(p){
+    const m=markers[p.id];
+    if(m) m.setIcon(makeIcon(p));
+  }
+
+  function addMarker(p){
+    const m = L.marker([p.lat,p.lon],{icon:makeIcon(p)}).addTo(map);
+    markers[p.id]=m;
+    bindPopup(p,m);
+  }
+
+  function drawAll(){
+    Object.values(markers).forEach(m=>map.removeLayer(m));
+    for(const k in markers) delete markers[k];
+    state.places.forEach(addMarker);
+  }
+
+  /* ---------- data ops ---------- */
+  function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,6); }
+
+  function addPlace(name, country, lat, lon, status){
+    // de-dupe by rounded coords
+    const dup = state.places.find(p=>Math.abs(p.lat-lat)<0.02 && Math.abs(p.lon-lon)<0.02);
+    if(dup){
+      dup.status=status; if(status==='wishlist'&&!dup.tier) dup.tier='mid';
+      refreshMarker(dup); flash(`${dup.name} updated`); render(); save();
+      map.flyTo([dup.lat,dup.lon], Math.max(map.getZoom(),5),{duration:.6});
+      return;
+    }
+    const p={id:uid(), name, country, lat, lon, status, tier:'mid'};
+    state.places.push(p);
+    addMarker(p);
+    map.flyTo([lat,lon], 5, {duration:.7});
+    flash(`Added ${name}`);
+    render(); save();
+  }
+
+  function removePlace(id){
+    const i=state.places.findIndex(p=>p.id===id);
+    if(i>-1) state.places.splice(i,1);
+    if(markers[id]){ map.removeLayer(markers[id]); delete markers[id]; }
+  }
+
+  function setStatus(id,s){
+    const p=state.places.find(x=>x.id===id); if(!p)return;
+    p.status=s; if(s==='wishlist'&&!p.tier)p.tier='mid';
+    refreshMarker(p); render(); save();
+  }
+  function setTier(id,t){
+    const p=state.places.find(x=>x.id===id); if(!p)return;
+    p.tier=t; refreshMarker(p); render(); save();
+  }
+
+  /* ---------- rendering ---------- */
+  const $=s=>document.querySelector(s);
+  function esc(s){return (s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+  function money(n){return '€'+Math.round(n).toLocaleString('en-US');}
+
+  function render(){
+    const visited = state.places.filter(p=>p.status==='visited');
+    const wish = state.places.filter(p=>p.status==='wishlist');
+
+    // stats
+    let total=0; const byTier={cheap:0,mid:0,splurge:0};
+    wish.forEach(p=>{ total += (state.tiers[p.tier]||0); byTier[p.tier]++; });
+    const avg = wish.length? total/wish.length : 0;
+    $('#s-visited').textContent = visited.length;
+    $('#s-remaining').textContent = wish.length;
+    $('#s-avg').innerHTML = wish.length? money(avg) : '<small>—</small>';
+    $('#s-total').textContent = money(total);
+
+    // bar
+    const bar=$('#bar');
+    if(wish.length){
+      bar.innerHTML = ['cheap','mid','splurge'].map(t=>{
+        const pct=(byTier[t]/wish.length*100);
+        return pct>0?`<i style="width:${pct}%;background:var(--${t})" title="${byTier[t]} ${t}"></i>`:'';
+      }).join('');
+    } else { bar.innerHTML='<i style="width:100%;background:var(--surface-3)"></i>'; }
+
+    // counts
+    $('#c-wish').textContent=wish.length;
+    $('#c-visit').textContent=visited.length;
+
+    // lists
+    $('#list-wish').innerHTML = wish.length
+      ? wish.map(wishRow).join('')
+      : `<div class="empty">Nothing on the list yet.<br>Search a city and tap ★ Wishlist.</div>`;
+    $('#list-visit').innerHTML = visited.length
+      ? visited.map(visitRow).join('')
+      : `<div class="empty">No visited cities pinned yet.</div>`;
+
+    wireRows();
+  }
+
+  function wishRow(p){
+    const tiers=['cheap','mid','splurge'].map(t=>
+      `<button data-act="tier" data-id="${p.id}" data-t="${t}" class="${p.tier===t?'on '+t:''}">${TIER_LABELS[t]}</button>`).join('');
+    return `<div class="place">
+      <i class="mk" style="background:var(--${p.tier})"></i>
+      <div class="pinfo">
+        <div class="pn">${esc(p.name)}</div>
+        <div class="pc">${esc(p.country||'')}</div>
+        <div class="tsel">${tiers}</div>
+      </div>
+      <div class="side">
+        <div class="cost">${money(state.tiers[p.tier]||0)}</div>
+        <div style="display:flex;gap:4px">
+          <button class="iconbtn go" data-act="fly" data-id="${p.id}" title="Show on map">◎</button>
+          <button class="iconbtn" data-act="visit" data-id="${p.id}" title="Mark visited">✓</button>
+          <button class="iconbtn del" data-act="del" data-id="${p.id}" title="Remove">✕</button>
+        </div>
+      </div>
+    </div>`;
+  }
+  function visitRow(p){
+    return `<div class="place">
+      <i class="mk" style="background:var(--visited)"></i>
+      <div class="pinfo">
+        <div class="pn">${esc(p.name)} <span style="color:var(--cheap)">✓</span></div>
+        <div class="pc">${esc(p.country||'')}</div>
+      </div>
+      <div class="side">
+        <div style="display:flex;gap:4px">
+          <button class="iconbtn go" data-act="fly" data-id="${p.id}" title="Show on map">◎</button>
+          <button class="iconbtn" data-act="wish" data-id="${p.id}" title="Move to wishlist">★</button>
+          <button class="iconbtn del" data-act="del" data-id="${p.id}" title="Remove">✕</button>
+        </div>
+      </div>
+    </div>`;
+  }
+
+  function wireRows(){
+    document.querySelectorAll('#list-wish [data-act], #list-visit [data-act]').forEach(b=>{
+      b.onclick=()=>{
+        const id=b.dataset.id, act=b.dataset.act;
+        if(act==='tier') setTier(id,b.dataset.t);
+        else if(act==='visit') setStatus(id,'visited');
+        else if(act==='wish') setStatus(id,'wishlist');
+        else if(act==='del'){ removePlace(id); render(); save(); }
+        else if(act==='fly'){
+          const p=state.places.find(x=>x.id===id);
+          if(p){ map.flyTo([p.lat,p.lon],6,{duration:.7}); markers[id]&&markers[id].openPopup(); closePanel(); }
+        }
+      };
+    });
+  }
+
+  /* ---------- search (Nominatim) ---------- */
+  async function search(){
+    const q=$('#q').value.trim();
+    if(!q) return;
+    $('#go').disabled=true; $('#loading').style.display='block'; $('#results').innerHTML='';
+    try{
+      const url='https://nominatim.openstreetmap.org/search?format=jsonv2&limit=6&featuretype=city&accept-language=en&q='+encodeURIComponent(q);
+      const r=await fetch(url,{headers:{'Accept':'application/json'}});
+      const data=await r.json();
+      const cities=data.filter(d=>['city','town','administrative','village','municipality','state'].includes(d.type)||['place','boundary'].includes(d.category)).slice(0,6);
+      const list=(cities.length?cities:data).slice(0,6);
+      if(!list.length){ $('#results').innerHTML=`<div class="empty">No matches for "${esc(q)}".</div>`; }
+      else { $('#results').innerHTML=list.map(resRow).join(''); wireResults(list); }
+    }catch(e){
+      $('#results').innerHTML=`<div class="empty">Search failed. Check connection and retry.</div>`;
+    }finally{
+      $('#go').disabled=false; $('#loading').style.display='none';
+    }
+  }
+
+  function parseName(d){
+    const dn=d.display_name||'';
+    const parts=dn.split(',').map(s=>s.trim());
+    const name=d.name||parts[0]||'Unknown';
+    const country=parts[parts.length-1]||'';
+    return {name, country, full:dn};
+  }
+  function resRow(d,i){
+    const {name,country}=parseName(d);
+    return `<div class="res" data-i="${i}">
+      <div class="info"><div class="rn">${esc(name)}</div><div class="rc">${esc(country)}</div></div>
+      <div class="acts">
+        <button class="chip v" data-i="${i}" data-s="visited">✓ Visited</button>
+        <button class="chip" data-i="${i}" data-s="wishlist">★ Wishlist</button>
+      </div>
+    </div>`;
+  }
+  function wireResults(list){
+    document.querySelectorAll('#results .chip').forEach(b=>{
+      b.onclick=()=>{
+        const d=list[+b.dataset.i]; const {name,country}=parseName(d);
+        addPlace(name, country, parseFloat(d.lat), parseFloat(d.lon), b.dataset.s);
+        $('#results').innerHTML=''; $('#q').value='';
+        closePanel();
+      };
+    });
+  }
+
+  /* ---------- reverse geocode on map click ---------- */
+  let clickMarker=null;
+  map.on('click', async (e)=>{
+    const {lat,lng}=e.latlng;
+    if(clickMarker) map.removeLayer(clickMarker);
+    clickMarker=L.popup({closeButton:true})
+      .setLatLng(e.latlng)
+      .setContent('<div class="pop-sub" style="margin:0">Looking up location…</div>')
+      .openOn(map);
+    try{
+      const url=`https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=10&accept-language=en&lat=${lat}&lon=${lng}`;
+      const r=await fetch(url); const d=await r.json();
+      const a=d.address||{};
+      const name=a.city||a.town||a.village||a.municipality||a.county||a.state||d.name||'Dropped pin';
+      const country=a.country||'';
+      clickMarker.setContent(
+        `<div class="pop-name">${esc(name)}</div><div class="pop-sub">${esc(country)}</div>
+         <div class="pop-row">
+           <button id="addv">✓ Visited</button>
+           <button id="addw">★ Wishlist</button>
+         </div>`);
+      setTimeout(()=>{
+        const el=clickMarker.getElement();
+        el.querySelector('#addv').onclick=()=>{addPlace(name,country,lat,lng,'visited');map.closePopup();};
+        el.querySelector('#addw').onclick=()=>{addPlace(name,country,lat,lng,'wishlist');map.closePopup();};
+      },0);
+    }catch(err){
+      clickMarker.setContent('<div class="pop-sub" style="margin:0">Lookup failed.</div>');
+    }
+  });
+
+  /* ---------- tiers ---------- */
+  function syncTierInputs(){
+    $('#t-cheap').value=state.tiers.cheap;
+    $('#t-mid').value=state.tiers.mid;
+    $('#t-splurge').value=state.tiers.splurge;
+  }
+  ['cheap','mid','splurge'].forEach(t=>{
+    document.addEventListener('input', e=>{
+      if(e.target.id==='t-'+t){
+        const v=parseFloat(e.target.value);
+        state.tiers[t]=isNaN(v)?0:v;
+        drawAll(); render(); save();
+      }
+    });
+  });
+
+  /* ---------- export / import / reset ---------- */
+  $('#export').onclick=()=>{
+    const blob=new Blob([JSON.stringify(state,null,2)],{type:'application/json'});
+    const a=document.createElement('a');
+    a.href=URL.createObjectURL(blob);
+    a.download='city-atlas-'+new Date().toISOString().slice(0,10)+'.json';
+    a.click(); URL.revokeObjectURL(a.href);
+    flash('Exported your atlas');
+  };
+  $('#import').onclick=()=>$('#file').click();
+  $('#file').onchange=(e)=>{
+    const f=e.target.files[0]; if(!f)return;
+    const rd=new FileReader();
+    rd.onload=()=>{
+      try{
+        const d=JSON.parse(rd.result);
+        if(Array.isArray(d.places)){
+          state.places=d.places;
+          state.tiers=Object.assign({...DEFAULT_TIERS}, d.tiers||{});
+          syncTierInputs(); drawAll(); render(); save();
+          flash('Imported '+d.places.length+' cities');
+        } else flash('That file does not look right');
+      }catch(err){ flash('Could not read that file'); }
+    };
+    rd.readAsText(f); e.target.value='';
+  };
+  $('#reset').onclick=()=>{
+    if(confirm('Remove all pinned cities? This cannot be undone.')){
+      state.places=[]; drawAll(); render(); save(); flash('Atlas cleared');
+    }
+  };
+
+  /* ---------- panel toggle (mobile) ---------- */
+  const panel=$('#panel'), scrim=$('#scrim');
+  function openPanel(){panel.classList.add('open');scrim.classList.add('show');}
+  function closePanel(){panel.classList.remove('open');scrim.classList.remove('show');}
+  $('#toggle').onclick=()=>panel.classList.contains('open')?closePanel():openPanel();
+  scrim.onclick=closePanel;
+
+  /* ---------- toast ---------- */
+  let toastTimer=null;
+  function flash(msg){
+    const t=$('#toast'); t.textContent=msg; t.classList.add('show');
+    clearTimeout(toastTimer); toastTimer=setTimeout(()=>t.classList.remove('show'),2200);
+  }
+
+  /* ---------- wire search ---------- */
+  $('#go').onclick=search;
+  $('#q').addEventListener('keydown',e=>{if(e.key==='Enter')search();});
+
+  /* ---------- boot ---------- */
+  (async function init(){
+    await load();
+    syncTierInputs();
+    drawAll();
+    render();
+    setTimeout(()=>map.invalidateSize(),250);
+  })();
+})();
+</script>
+</body>
+</html>
